@@ -1,0 +1,286 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ───────────────────────── Platform ─────────────────────────
+
+model Plan {
+  id           String   @id @default(cuid())
+  code         String   @unique
+  name         String
+  priceMonthly Int      // cents
+  maxUsers     Int
+  maxContacts  Int
+  features     Json     @default("[]")
+  sortOrder    Int      @default(0)
+  tenants      Tenant[]
+}
+
+model Tenant {
+  id          String    @id @default(cuid())
+  slug        String    @unique
+  name        String
+  template    String    @default("generic")
+  planId      String
+  plan        Plan      @relation(fields: [planId], references: [id])
+  trialEndsAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  memberships       Membership[]
+  invitations       Invitation[]
+  entityDefinitions EntityDefinition[]
+  fieldDefinitions  FieldDefinition[]
+  companies         Company[]
+  contacts          Contact[]
+  pipelines         Pipeline[]
+  stages            Stage[]
+  deals             Deal[]
+  activities        Activity[]
+  tasks             Task[]
+}
+
+model User {
+  id           String       @id @default(cuid())
+  email        String       @unique
+  name         String
+  passwordHash String
+  createdAt    DateTime     @default(now())
+  memberships  Membership[]
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+model Membership {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role     @default(MEMBER)
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, userId])
+  @@index([userId])
+}
+
+model Invitation {
+  id         String    @id @default(cuid())
+  tenantId   String
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  email      String
+  role       Role      @default(MEMBER)
+  token      String    @unique
+  expiresAt  DateTime
+  acceptedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([tenantId])
+}
+
+// ───────────────────────── Dynamic configuration ─────────────────────────
+
+enum EntityKey {
+  CONTACT
+  COMPANY
+  DEAL
+  ACTIVITY
+  TASK
+}
+
+model EntityDefinition {
+  id        String    @id @default(cuid())
+  tenantId  String
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  entityKey EntityKey
+  singular  String
+  plural    String
+  icon      String
+
+  @@unique([tenantId, entityKey])
+}
+
+enum FieldType {
+  TEXT
+  TEXTAREA
+  NUMBER
+  CURRENCY
+  DATE
+  BOOLEAN
+  SELECT
+  MULTISELECT
+  EMAIL
+  PHONE
+  URL
+}
+
+model FieldDefinition {
+  id        String    @id @default(cuid())
+  tenantId  String
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  entityKey EntityKey
+  key       String
+  label     String
+  type      FieldType
+  options   Json      @default("[]") // string[] for SELECT / MULTISELECT
+  required  Boolean   @default(false)
+  isSystem  Boolean   @default(false) // relabels a built-in column instead of a custom field
+  showInList Boolean  @default(true)
+  order     Int       @default(0)
+  archived  Boolean   @default(false)
+
+  @@unique([tenantId, entityKey, key])
+  @@index([tenantId, entityKey])
+}
+
+// ───────────────────────── CRM records ─────────────────────────
+
+model Company {
+  id           String     @id @default(cuid())
+  tenantId     String
+  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name         String
+  domain       String?
+  phone        String?
+  customFields Json       @default("{}")
+  createdById  String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  contacts     Contact[]
+  deals        Deal[]
+  activities   Activity[]
+  tasks        Task[]
+
+  @@index([tenantId])
+}
+
+model Contact {
+  id           String     @id @default(cuid())
+  tenantId     String
+  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  firstName    String
+  lastName     String     @default("")
+  email        String?
+  phone        String?
+  companyId    String?
+  company      Company?   @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  customFields Json       @default("{}")
+  createdById  String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  deals        Deal[]
+  activities   Activity[]
+  tasks        Task[]
+
+  @@index([tenantId])
+  @@index([tenantId, lastName])
+}
+
+model Pipeline {
+  id        String  @id @default(cuid())
+  tenantId  String
+  tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  isDefault Boolean @default(false)
+  stages    Stage[]
+
+  @@index([tenantId])
+}
+
+model Stage {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  pipelineId  String
+  pipeline    Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  name        String
+  order       Int
+  probability Int      @default(0)
+  color       String   @default("slate")
+  deals       Deal[]
+
+  @@index([tenantId, pipelineId])
+}
+
+model Deal {
+  id           String     @id @default(cuid())
+  tenantId     String
+  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  title        String
+  value        Int        @default(0) // cents
+  stageId      String
+  stage        Stage      @relation(fields: [stageId], references: [id], onDelete: Restrict)
+  contactId    String?
+  contact      Contact?   @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  companyId    String?
+  company      Company?   @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  ownerId      String?
+  position     Int        @default(0)
+  customFields Json       @default("{}")
+  createdById  String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  activities   Activity[]
+  tasks        Task[]
+
+  @@index([tenantId, stageId])
+}
+
+enum ActivityType {
+  NOTE
+  CALL
+  MEETING
+  EMAIL
+}
+
+model Activity {
+  id           String       @id @default(cuid())
+  tenantId     String
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  type         ActivityType @default(NOTE)
+  subject      String
+  body         String       @default("")
+  occurredAt   DateTime     @default(now())
+  contactId    String?
+  contact      Contact?     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  companyId    String?
+  company      Company?     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  dealId       String?
+  deal         Deal?        @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  customFields Json         @default("{}")
+  createdById  String?
+  createdAt    DateTime     @default(now())
+
+  @@index([tenantId, occurredAt])
+}
+
+model Task {
+  id           String    @id @default(cuid())
+  tenantId     String
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  title        String
+  dueAt        DateTime?
+  done         Boolean   @default(false)
+  assigneeId   String?
+  contactId    String?
+  contact      Contact?  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  companyId    String?
+  company      Company?  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  dealId       String?
+  deal         Deal?     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  customFields Json      @default("{}")
+  createdById  String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([tenantId, done, dueAt])
+}
