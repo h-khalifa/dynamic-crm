@@ -158,11 +158,15 @@ shows Clients and Property Deals).
 - [x] Empty states, loading skeleton, error boundary
 - [x] README, `CLAUDE.md` and this document
 - [x] Production image verified (pages served; no data leak in the RSC payload)
+- [x] Local git repository on `main` with the initial commit (`.env` is ignored; only `.env.example` is tracked)
+- [ ] GitHub remote created and pushed (needs a remote URL, or the GitHub CLI installed)
 
 **Stop point:** a fresh `migrate deploy` plus `db seed` gives working demo logins, and the prod image serves pages.
 - **Status:** ✅ met.
 
-### Phase 7: End-to-end verification ← **next**
+### Phase 7: End-to-end verification ← **next, blocked on Docker Desktop being started**
+- **Update 2026-11-24:** the run was attempted but Docker Desktop was not running (the daemon pipe was missing), so no
+  e2e result exists yet. Start Docker Desktop, then work through the unchecked items below.
 - [x] Playwright spec `e2e/crm.spec.ts` and `docker-compose.e2e.yml` (prod image on `dcrm.test`, Chromium resolver
   mapping)
 - [ ] Install `@playwright/test` (`docker compose run --rm app npm install`), which updates the lockfile
